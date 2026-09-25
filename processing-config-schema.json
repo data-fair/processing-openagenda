@@ -1,0 +1,262 @@
+{
+  "$id": "https://github.com/data-fair/processing-openagenda/processing-config",
+  "type": "object",
+  "title": "ProcessingConfig",
+  "layout": {
+    "comp": "tabs",
+    "readOnlyPropertiesMode": "hide"
+  },
+  "default": {
+    "datasetMode": "create",
+    "lang": "fr",
+    "extIdKey": "data-fair",
+    "relative": ["current", "upcoming"]
+  },
+  "required": [
+    "datasetMode",
+    "agendaUid"
+  ],
+  "allOf": [
+    {
+      "title": "Action",
+      "x-i18n-title": { "fr": "Action" },
+      "layout": {
+        "children": [
+          "datasetMode",
+          {
+            "markdown": "**Import** reads the events of an OpenAgenda agenda and writes them to a Data Fair dataset. **Export** reads a Data Fair dataset and creates or updates the matching events in an OpenAgenda agenda.",
+            "x-i18n-markdown": {
+              "fr": "**Importer** lit les événements d'un agenda OpenAgenda et les écrit dans un jeu de données Data Fair. **Exporter** lit un jeu de données Data Fair et crée ou met à jour les événements correspondants dans un agenda OpenAgenda."
+            }
+          }
+        ]
+      },
+      "properties": {
+        "datasetMode": {
+          "type": "string",
+          "title": "Action",
+          "x-i18n-title": { "fr": "Action" },
+          "default": "create",
+          "oneOf": [
+            {
+              "const": "create",
+              "title": "Import events — create a dataset",
+              "x-i18n-title": { "fr": "Importer des événements — créer un jeu de données" }
+            },
+            {
+              "const": "update",
+              "title": "Import events — update a dataset",
+              "x-i18n-title": { "fr": "Importer des événements — mettre à jour un jeu de données" }
+            },
+            {
+              "const": "export",
+              "title": "Export a dataset — create or update events",
+              "x-i18n-title": { "fr": "Exporter un jeu de données — créer ou mettre à jour des événements" }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "title": "Dataset",
+      "x-i18n-title": { "fr": "Jeu de données" },
+      "properties": {
+        "datasetTitle": {
+          "type": "string",
+          "title": "Title of the dataset to create",
+          "x-i18n-title": { "fr": "Titre du jeu de données à créer" },
+          "description": "The dataset is created on the first run, then the processing switches to update mode and refreshes it on every following run.",
+          "x-i18n-description": {
+            "fr": "Le jeu de données est créé à la première exécution, puis le traitement bascule en mode mise à jour et le rafraîchit à chaque exécution suivante."
+          },
+          "layout": {
+            "if": "parent.data.datasetMode === 'create'"
+          }
+        },
+        "dataset": {
+          "type": "object",
+          "title": "Dataset",
+          "x-i18n-title": { "fr": "Jeu de données" },
+          "description": "Dataset to update (import) or dataset to read the events from (export).",
+          "x-i18n-description": {
+            "fr": "Jeu de données à mettre à jour (import) ou jeu de données source des événements (export)."
+          },
+          "layout": {
+            "if": "parent.data.datasetMode !== 'create'",
+            "getItems": {
+              "url": "${context.dataFairUrl}/api/v1/datasets?select=id,title&size=50&${context.ownerFilter}",
+              "qSearchParam": "q",
+              "itemsResults": "data.results",
+              "itemTitle": "item.title",
+              "itemKey": "item.id"
+            }
+          },
+          "properties": {
+            "id": { "type": "string", "title": "Identifiant" },
+            "title": { "type": "string", "title": "Titre" }
+          }
+        }
+      }
+    },
+    {
+      "title": "OpenAgenda",
+      "properties": {
+        "agendaUid": {
+          "type": "string",
+          "title": "Agenda identifier",
+          "x-i18n-title": { "fr": "Identifiant de l'agenda" },
+          "description": "Numeric identifier of the agenda, or its URL code. Both are shown at the bottom of the agenda sidebar on [openagenda.com](https://openagenda.com).",
+          "x-i18n-description": {
+            "fr": "Identifiant numérique de l'agenda, ou son code URL. Les deux figurent en bas de la barre latérale de l'agenda sur [openagenda.com](https://openagenda.com)."
+          },
+          "examples": ["bordeaux-metropole"]
+        },
+        "apiKey": {
+          "type": "string",
+          "title": "Public API key",
+          "x-i18n-title": { "fr": "Clé API publique" },
+          "description": "Sent in the `key` header of every read call. Create it from [your OpenAgenda settings](https://openagenda.com/settings/apiKey), under *See your API keys*. It is stored in the processing's secrets when the configuration is saved.",
+          "x-i18n-description": {
+            "fr": "Envoyée dans l'en-tête `key` de chaque appel de lecture. Créez-la depuis [vos paramètres OpenAgenda](https://openagenda.com/settings/apiKey), sous *Voir vos clés API*. Elle est stockée dans les secrets du traitement à l'enregistrement de la configuration."
+          },
+          "layout": {
+            "if": "parent.data.datasetMode !== 'export'",
+            "props": { "type": "password", "autocomplete": "suppress" }
+          }
+        },
+        "secretKey": {
+          "type": "string",
+          "title": "Write secret key",
+          "x-i18n-title": { "fr": "Clé secrète d'écriture" },
+          "description": "Exchanged for a short-lived access token, required to create or update events. It is attributed on request by OpenAgenda support and shown in your settings, next to the public key. It is stored in the processing's secrets when the configuration is saved.",
+          "x-i18n-description": {
+            "fr": "Échangée contre un jeton d'accès à durée limitée, requis pour créer ou mettre à jour des événements. Elle est attribuée sur demande par le support OpenAgenda et figure dans vos paramètres, à côté de la clé publique. Elle est stockée dans les secrets du traitement à l'enregistrement de la configuration."
+          },
+          "layout": {
+            "if": "parent.data.datasetMode === 'export'",
+            "props": { "type": "password", "autocomplete": "suppress" }
+          }
+        },
+        "lang": {
+          "type": "string",
+          "title": "Language",
+          "x-i18n-title": { "fr": "Langue" },
+          "description": "Multilingual fields (title, description, keywords…) are read and written in this language. When it is missing on an event, the first available language is used.",
+          "x-i18n-description": {
+            "fr": "Les champs multilingues (titre, description, mots clés…) sont lus et écrits dans cette langue. Si elle est absente d'un événement, la première langue disponible est utilisée."
+          },
+          "default": "fr",
+          "enum": ["fr", "en", "de", "es", "it"]
+        },
+        "relative": {
+          "type": "array",
+          "title": "Events to import",
+          "x-i18n-title": { "fr": "Événements à importer" },
+          "description": "Restricts the import to events of the selected periods. Leave all unchecked to import every event of the agenda.",
+          "x-i18n-description": {
+            "fr": "Limite l'import aux événements des périodes cochées. Tout décocher importe l'intégralité des événements de l'agenda."
+          },
+          "default": ["current", "upcoming"],
+          "items": {
+            "type": "string",
+            "enum": ["current", "upcoming", "passed"]
+          },
+          "layout": {
+            "if": "parent.data.datasetMode !== 'export'",
+            "comp": "checkbox-group",
+            "items": [
+              { "const": "current", "title": "Happening now", "x-i18n-title": { "fr": "En cours" } },
+              { "const": "upcoming", "title": "Upcoming", "x-i18n-title": { "fr": "À venir" } },
+              { "const": "passed", "title": "Passed", "x-i18n-title": { "fr": "Passés" } }
+            ]
+          }
+        },
+        "extIdKey": {
+          "type": "string",
+          "title": "External identifier key",
+          "x-i18n-title": { "fr": "Clé d'identifiant externe" },
+          "description": "Name of the external identifier stored on each event. Events are upserted by this key and the value of the external identifier column, so re-running the export updates the same events instead of duplicating them.",
+          "x-i18n-description": {
+            "fr": "Nom de l'identifiant externe stocké sur chaque événement. Les événements sont créés ou mis à jour via cette clé et la valeur de la colonne d'identifiant externe : une nouvelle exécution met à jour les mêmes événements au lieu de les dupliquer."
+          },
+          "default": "data-fair",
+          "layout": {
+            "if": "parent.data.datasetMode === 'export'"
+          }
+        }
+      }
+    },
+    {
+      "title": "Export fields",
+      "x-i18n-title": { "fr": "Champs à exporter" },
+      "layout": {
+        "if": "parent.data.datasetMode === 'export'"
+      },
+      "properties": {
+        "extIdColumn": {
+          "type": "string",
+          "title": "External identifier column",
+          "x-i18n-title": { "fr": "Colonne d'identifiant externe" },
+          "description": "Column holding the stable identifier of each event on your side. Must be unique: it drives the creation and update of events.",
+          "x-i18n-description": {
+            "fr": "Colonne contenant l'identifiant stable de chaque événement de votre côté. Elle doit être unique : c'est elle qui pilote la création et la mise à jour des événements."
+          }
+        },
+        "titleColumn": {
+          "type": "string",
+          "title": "Title column",
+          "x-i18n-title": { "fr": "Colonne du titre" },
+          "description": "Column mapped to the event title (140 characters maximum).",
+          "x-i18n-description": {
+            "fr": "Colonne associée au titre de l'événement (140 caractères maximum)."
+          }
+        },
+        "descriptionColumn": {
+          "type": "string",
+          "title": "Short description column",
+          "x-i18n-title": { "fr": "Colonne de la description courte" },
+          "description": "Column mapped to the short event description (200 characters maximum).",
+          "x-i18n-description": {
+            "fr": "Colonne associée à la description courte de l'événement (200 caractères maximum)."
+          }
+        },
+        "beginColumn": {
+          "type": "string",
+          "title": "Start column",
+          "x-i18n-title": { "fr": "Colonne de début" },
+          "description": "Column holding the start date and time, in ISO 8601 format (for example `2026-02-23T17:00:00+0200`).",
+          "x-i18n-description": {
+            "fr": "Colonne contenant la date et l'heure de début, au format ISO 8601 (par exemple `2026-02-23T17:00:00+0200`)."
+          }
+        },
+        "endColumn": {
+          "type": "string",
+          "title": "End column",
+          "x-i18n-title": { "fr": "Colonne de fin" },
+          "description": "Column holding the end date and time, in ISO 8601 format.",
+          "x-i18n-description": {
+            "fr": "Colonne contenant la date et l'heure de fin, au format ISO 8601."
+          }
+        },
+        "locationUidColumn": {
+          "type": "string",
+          "title": "Location identifier column",
+          "x-i18n-title": { "fr": "Colonne d'identifiant de lieu" },
+          "description": "Optional. Column holding the OpenAgenda identifier of the location. Events with a location are physical (attendance mode 1), and the location must already exist on the agenda. Without it, events are declared online (attendance mode 2) and the access link column becomes mandatory.",
+          "x-i18n-description": {
+            "fr": "Optionnel. Colonne contenant l'identifiant OpenAgenda du lieu. Les événements avec un lieu sont physiques (mode de participation 1) et le lieu doit déjà exister sur l'agenda. Sans cette colonne, les événements sont déclarés en ligne (mode de participation 2) et la colonne de lien d'accès devient obligatoire."
+          }
+        },
+        "onlineAccessLinkColumn": {
+          "type": "string",
+          "title": "Online access link column",
+          "x-i18n-title": { "fr": "Colonne de lien d'accès en ligne" },
+          "description": "Optional. Column holding the access link of an online event. Ignored when a location identifier column is set.",
+          "x-i18n-description": {
+            "fr": "Optionnel. Colonne contenant le lien d'accès d'un événement en ligne. Ignorée lorsqu'une colonne d'identifiant de lieu est renseignée."
+          }
+        }
+      }
+    }
+  ]
+}
