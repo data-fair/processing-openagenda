@@ -1,6 +1,6 @@
 import { it, describe } from 'node:test'
 import assert from 'node:assert/strict'
-import { buildEventData, flattenEvent, toCsv } from '../lib/utils.ts'
+import { IMPORT_COLUMNS, IMPORT_SCHEMA, buildEventData, flattenEvent, toCsv } from '../lib/utils.ts'
 
 const event = {
   uid: 123,
@@ -13,7 +13,7 @@ const event = {
   lastTiming: { end: '2026-07-05T23:00:00.000+0200' },
   timings: [{ begin: '2026-07-01T18:00:00.000+0200', end: '2026-07-01T23:00:00.000+0200' }],
   image: { base: 'https://cdn.openagenda.com/main/', filename: 'abc.jpg' },
-  location: { uid: 42, name: 'Parc', address: '1 rue des Fleurs', city: 'Bordeaux', postalCode: '33000', latitude: 44.84, longitude: -0.58 },
+  location: { uid: 42, name: 'Parc', address: '1 rue des Fleurs', city: 'Bordeaux', postalCode: '33000', countryCode: 'FR', latitude: 44.84, longitude: -0.58 },
   attendanceMode: 1,
   updatedAt: '2026-06-01T10:00:00.000Z'
 }
@@ -30,6 +30,7 @@ describe('flattenEvent', () => {
     assert.equal(row.next_end_hour, '23:00')
     assert.equal(row.image, 'https://cdn.openagenda.com/main/abc.jpg')
     assert.equal(row.city, 'Bordeaux')
+    assert.equal(row.country, 'FR')
     assert.equal(row.latitude, '44.84')
     assert.equal(row.agenda_uid, 'bordeaux-metropole')
   })
@@ -93,5 +94,18 @@ describe('buildEventData', () => {
       () => buildEventData({ titre: 'x', description: 'y', debut: 'a', fin: 'b' }, columns),
       /aucun lieu ni lien/
     )
+  })
+})
+
+describe('IMPORT_SCHEMA', () => {
+  it('describes every column produced by flattenEvent', () => {
+    assert.deepEqual(IMPORT_COLUMNS, Object.keys(flattenEvent(event, 'fr', 'demo')))
+  })
+
+  it('keeps postal codes as strings and geolocates the events', () => {
+    const property = (key: string) => IMPORT_SCHEMA.find(p => p.key === key)
+    assert.deepEqual(property('postal_code')?.['x-transform'], { type: 'string' })
+    assert.equal(property('latitude')?.['x-refersTo'], 'http://www.w3.org/2003/01/geo/wgs84_pos#lat')
+    assert.equal(property('longitude')?.['x-refersTo'], 'http://www.w3.org/2003/01/geo/wgs84_pos#long')
   })
 })

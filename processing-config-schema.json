@@ -19,7 +19,6 @@
   "allOf": [
     {
       "title": "Action",
-      "x-i18n-title": { "fr": "Action" },
       "layout": {
         "children": [
           "datasetMode",
@@ -35,7 +34,6 @@
         "datasetMode": {
           "type": "string",
           "title": "Action",
-          "x-i18n-title": { "fr": "Action" },
           "default": "create",
           "oneOf": [
             {
@@ -92,8 +90,8 @@
             }
           },
           "properties": {
-            "id": { "type": "string", "title": "Identifiant" },
-            "title": { "type": "string", "title": "Titre" }
+            "id": { "type": "string", "title": "Identifier", "x-i18n-title": { "fr": "Identifiant" } },
+            "title": { "type": "string", "title": "Title", "x-i18n-title": { "fr": "Titre" } }
           }
         }
       }
@@ -146,7 +144,16 @@
             "fr": "Les champs multilingues (titre, description, mots clés…) sont lus et écrits dans cette langue. Si elle est absente d'un événement, la première langue disponible est utilisée."
           },
           "default": "fr",
-          "enum": ["fr", "en", "de", "es", "it"]
+          "enum": ["fr", "en", "de", "es", "it"],
+          "layout": {
+            "items": [
+              { "value": "fr", "title": "French", "x-i18n-title": { "fr": "Français" } },
+              { "value": "en", "title": "English", "x-i18n-title": { "fr": "Anglais" } },
+              { "value": "de", "title": "German", "x-i18n-title": { "fr": "Allemand" } },
+              { "value": "es", "title": "Spanish", "x-i18n-title": { "fr": "Espagnol" } },
+              { "value": "it", "title": "Italian", "x-i18n-title": { "fr": "Italien" } }
+            ]
+          }
         },
         "relative": {
           "type": "array",
@@ -165,9 +172,9 @@
             "if": "parent.data.datasetMode !== 'export'",
             "comp": "checkbox-group",
             "items": [
-              { "const": "current", "title": "Happening now", "x-i18n-title": { "fr": "En cours" } },
-              { "const": "upcoming", "title": "Upcoming", "x-i18n-title": { "fr": "À venir" } },
-              { "const": "passed", "title": "Passed", "x-i18n-title": { "fr": "Passés" } }
+              { "value": "current", "title": "Happening now", "x-i18n-title": { "fr": "En cours" } },
+              { "value": "upcoming", "title": "Upcoming", "x-i18n-title": { "fr": "À venir" } },
+              { "value": "passed", "title": "Passed", "x-i18n-title": { "fr": "Passés" } }
             ]
           }
         },
@@ -200,6 +207,14 @@
           "description": "Column holding the stable identifier of each event on your side. Must be unique: it drives the creation and update of events.",
           "x-i18n-description": {
             "fr": "Colonne contenant l'identifiant stable de chaque événement de votre côté. Elle doit être unique : c'est elle qui pilote la création et la mise à jour des événements."
+          },
+          "layout": {
+            "comp": "autocomplete",
+            "getItems": {
+              "url": "${context.dataFairUrl}/api/v1/datasets/${rootData.config?.dataset?.id}/schema?calculated=false",
+              "itemTitle": "item.title || item['x-originalName'] || item.key",
+              "itemKey": "item.key"
+            }
           }
         },
         "titleColumn": {
@@ -209,6 +224,14 @@
           "description": "Column mapped to the event title (140 characters maximum).",
           "x-i18n-description": {
             "fr": "Colonne associée au titre de l'événement (140 caractères maximum)."
+          },
+          "layout": {
+            "comp": "autocomplete",
+            "getItems": {
+              "url": "${context.dataFairUrl}/api/v1/datasets/${rootData.config?.dataset?.id}/schema?calculated=false",
+              "itemTitle": "item.title || item['x-originalName'] || item.key",
+              "itemKey": "item.key"
+            }
           }
         },
         "descriptionColumn": {
@@ -218,6 +241,14 @@
           "description": "Column mapped to the short event description (200 characters maximum).",
           "x-i18n-description": {
             "fr": "Colonne associée à la description courte de l'événement (200 caractères maximum)."
+          },
+          "layout": {
+            "comp": "autocomplete",
+            "getItems": {
+              "url": "${context.dataFairUrl}/api/v1/datasets/${rootData.config?.dataset?.id}/schema?calculated=false",
+              "itemTitle": "item.title || item['x-originalName'] || item.key",
+              "itemKey": "item.key"
+            }
           }
         },
         "beginColumn": {
@@ -227,6 +258,14 @@
           "description": "Column holding the start date and time, in ISO 8601 format (for example `2026-02-23T17:00:00+0200`).",
           "x-i18n-description": {
             "fr": "Colonne contenant la date et l'heure de début, au format ISO 8601 (par exemple `2026-02-23T17:00:00+0200`)."
+          },
+          "layout": {
+            "comp": "autocomplete",
+            "getItems": {
+              "url": "${context.dataFairUrl}/api/v1/datasets/${rootData.config?.dataset?.id}/schema?calculated=false",
+              "itemTitle": "item.title || item['x-originalName'] || item.key",
+              "itemKey": "item.key"
+            }
           }
         },
         "endColumn": {
@@ -236,6 +275,14 @@
           "description": "Column holding the end date and time, in ISO 8601 format.",
           "x-i18n-description": {
             "fr": "Colonne contenant la date et l'heure de fin, au format ISO 8601."
+          },
+          "layout": {
+            "comp": "autocomplete",
+            "getItems": {
+              "url": "${context.dataFairUrl}/api/v1/datasets/${rootData.config?.dataset?.id}/schema?calculated=false",
+              "itemTitle": "item.title || item['x-originalName'] || item.key",
+              "itemKey": "item.key"
+            }
           }
         },
         "locationUidColumn": {
@@ -245,6 +292,14 @@
           "description": "Optional. Column holding the OpenAgenda identifier of the location. Events with a location are physical (attendance mode 1), and the location must already exist on the agenda. Without it, events are declared online (attendance mode 2) and the access link column becomes mandatory.",
           "x-i18n-description": {
             "fr": "Optionnel. Colonne contenant l'identifiant OpenAgenda du lieu. Les événements avec un lieu sont physiques (mode de participation 1) et le lieu doit déjà exister sur l'agenda. Sans cette colonne, les événements sont déclarés en ligne (mode de participation 2) et la colonne de lien d'accès devient obligatoire."
+          },
+          "layout": {
+            "comp": "autocomplete",
+            "getItems": {
+              "url": "${context.dataFairUrl}/api/v1/datasets/${rootData.config?.dataset?.id}/schema?calculated=false",
+              "itemTitle": "item.title || item['x-originalName'] || item.key",
+              "itemKey": "item.key"
+            }
           }
         },
         "onlineAccessLinkColumn": {
@@ -254,6 +309,14 @@
           "description": "Optional. Column holding the access link of an online event. Ignored when a location identifier column is set.",
           "x-i18n-description": {
             "fr": "Optionnel. Colonne contenant le lien d'accès d'un événement en ligne. Ignorée lorsqu'une colonne d'identifiant de lieu est renseignée."
+          },
+          "layout": {
+            "comp": "autocomplete",
+            "getItems": {
+              "url": "${context.dataFairUrl}/api/v1/datasets/${rootData.config?.dataset?.id}/schema?calculated=false",
+              "itemTitle": "item.title || item['x-originalName'] || item.key",
+              "itemKey": "item.key"
+            }
           }
         }
       }

@@ -1,19 +1,33 @@
-import { LINES_PAGE_SIZE, OPENAGENDA_API, buildEventData, dfRetry, isStopped, oaRetry } from './utils.ts'
+import { LINES_PAGE_SIZE, OPENAGENDA_API, OPENAGENDA_TIMEOUT, buildEventData, errorDetail, isStopped, oaRetry } from './utils.ts'
 import type { ProcessingContext } from '@data-fair/lib-common-types/processings.js'
 import type { ProcessingConfig } from '#types/processingConfig/index.ts'
 
 type AccessToken = { token: string, expiresAt: number }
 
+/** Statuses that concern the whole agenda, not one event: the export stops at the first one. */
+const FATAL_STATUSES = [401, 403, 404]
+
+/** Number of failed lines logged one by one, the others are only counted. */
+const MAX_LOGGED_ERRORS = 50
+
 /**
  * Exchange the write secret key for a short-lived access token. The secret key itself is never sent
  * to the events routes.
  */
-const requestAccessToken = async (axios: any, secretKey: string, log: ProcessingContext<ProcessingConfig>['log']): Promise<AccessToken> => {
-  const res: any = await oaRetry(() => axios.post(
-    `${OPENAGENDA_API}/requestAccessToken`,
-    { code: secretKey },
-    { headers: { 'content-type': 'application/json' } }
-  ), log)
+export const requestAccessToken = async (axios: any, secretKey: string, log: ProcessingContext<ProcessingConfig>['log']): Promise<AccessToken> => {
+  let res: any
+  try {
+    res = await oaRetry(() => axios.post(
+      `${OPENAGENDA_API}/requestAccessToken`,
+      { code: secretKey },
+      { headers: { 'content-type': 'application/json' }, timeout: OPENAGENDA_TIMEOUT }
+    ), log)
+  } catch (err: any) {
+    // never rethrow the axios error: its config.data holds the secret key, and the worker dumps
+    // the whole error in the run log (debug mode). No `cause` either, for the same reason.
+    const { status, body } = errorDetail(err)
+    throw new Error(`échec de la demande de jeton d'accès OpenAgenda (${status ?? err?.message})${body ? ' : ' + body : ''}`)
+  }
   const token = res.data?.access_token
   if (!token) throw new Error("réponse inattendue d'OpenAgenda à la demande de jeton d'accès")
   const expiresIn = Number(res.data?.expires_in) || 3600
@@ -49,13 +63,13 @@ export const runExport = async (context: ProcessingContext<ProcessingConfig>) =>
 
   await log.step(`Export vers l'agenda ${agendaUid}`)
   const stats = { synced: 0, failed: 0 }
-  const errors: string[] = []
   let index = 0
   let total = 0
 
+  await log.task('Événements exportés')
   while (url) {
     if (isStopped()) break
-    const res = await dfRetry(() => axios.get(url as string), log)
+    const res: any = await axios.get(url)
     const results: any[] = res.data?.results ?? []
     total = res.data?.total ?? total
 
@@ -69,17 +83,28 @@ export const runExport = async (context: ProcessingContext<ProcessingConfig>) =>
         }
         const data = buildEventData(row, processingConfig)
         const token = await getToken()
-        await oaRetry(() => axios.put(
+        // the event fields are the JSON body itself: the `data` key of the OpenAgenda docs is the
+        // axios request option (and the multipart field name), not a wrapper (see @openagenda/sdk-js)
+        await axios.put(
           `${OPENAGENDA_API}/agendas/${encodeURIComponent(agendaUid)}/events/ext/${encodeURIComponent(extIdKey || 'data-fair')}/${encodeURIComponent(String(rawExtId))}`,
-          { data },
-          { headers: { 'access-token': token, lang } }
-        ), log)
+          data,
+          { headers: { 'access-token': token, lang }, timeout: OPENAGENDA_TIMEOUT }
+        )
         stats.synced++
       } catch (err: any) {
+        const { status, body } = errorDetail(err)
+        // the agenda itself is unreachable (bad token, no write access, unknown agenda):
+        // every following line would fail the same way
+        if (status && FATAL_STATUSES.includes(status)) {
+          throw new Error(`OpenAgenda refuse l'écriture dans l'agenda ${agendaUid} (${status})${body ? ' : ' + body : ''}`)
+        }
         stats.failed++
-        const detail = err.response?.data ? JSON.stringify(err.response.data) : ''
-        errors.push(`ligne ${index} (id externe "${rawExtId}"): ${err.message}`)
-        await log.error(`Échec de l'export de la ligne ${index}: ${err.message}`, detail)
+        // each log line is pushed in the run document: cap them so a systematic error cannot grow it without bound
+        if (stats.failed <= MAX_LOGGED_ERRORS) {
+          await log.error(`Échec de l'export de la ligne ${index} (id externe "${rawExtId}") : ${err.message}`, body)
+        } else if (stats.failed === MAX_LOGGED_ERRORS + 1) {
+          await log.warning(`Plus de ${MAX_LOGGED_ERRORS} lignes en erreur, les suivantes ne sont plus détaillées`)
+        }
       }
       if (index % 10 === 0 || index === total) await log.progress('Événements exportés', index, total || index)
     }
@@ -95,8 +120,5 @@ export const runExport = async (context: ProcessingContext<ProcessingConfig>) =>
 
   await log.step('Rapport final')
   await log.info(`${index} lignes parcourues, ${stats.synced} événements synchronisés, ${stats.failed} en erreur`)
-  if (errors.length) {
-    await log.warning(`${errors.length} ligne(s) en erreur (détail complet en extra)`)
-    await log.error('Détail des lignes en erreur', errors.join('\n'))
-  }
+  if (stats.failed) throw new Error(`${stats.failed} ligne(s) sur ${index} n'ont pas pu être exportées`)
 }

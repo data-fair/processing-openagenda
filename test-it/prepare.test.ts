@@ -41,6 +41,11 @@ describe('prepare', () => {
     )
   })
 
+  it('answers validation errors with a 400, so the API shows the message', async () => {
+    const err: any = await prepare({ processingConfig: { ...baseImport } as any, secrets: {} }).then(() => null, e => e)
+    assert.equal(err?.status, 400)
+  })
+
   it('requires a dataset title to create a dataset', async () => {
     await assert.rejects(
       prepare({ processingConfig: { datasetMode: 'create', agendaUid: 'demo', apiKey: 'x' } as any, secrets: {} }),

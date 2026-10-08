@@ -1,4 +1,4 @@
-import { EVENTS_PAGE_SIZE, IMPORT_COLUMNS, OPENAGENDA_API, dfRetry, flattenEvent, isStopped, oaRetry, toCsv } from './utils.ts'
+import { EVENTS_PAGE_SIZE, IMPORT_COLUMNS, IMPORT_SCHEMA, OPENAGENDA_API, OPENAGENDA_TIMEOUT, dfRetry, flattenEvent, isStopped, toCsv } from './utils.ts'
 import type { ProcessingContext } from '@data-fair/lib-common-types/processings.js'
 import type { ProcessingConfig } from '#types/processingConfig/index.ts'
 import { createReadStream } from 'node:fs'
@@ -12,38 +12,42 @@ const getContentLength = async (formData: FormData): Promise<number> => {
 }
 
 /**
- * Read every event of the agenda, page after page, using the `after` cursor returned by the API.
+ * Read every event of the agenda, page after page, using the `after` cursor returned by the API, and
+ * flatten each page right away so the raw (detailed) events are never all held in memory.
  * A repeated cursor (or an empty page) stops the loop, so a broken API response cannot loop forever.
  */
-const fetchEvents = async (context: ProcessingContext<ProcessingConfig>, apiKey: string): Promise<any[]> => {
+export const fetchEvents = async (context: ProcessingContext<ProcessingConfig>, apiKey: string): Promise<Record<string, string>[]> => {
   const { processingConfig, axios, log } = context
   const { relative } = processingConfig
   const agendaUid = processingConfig.agendaUid
   if (!agendaUid) throw new Error("Identifiant de l'agenda manquant.")
+  const lang = processingConfig.lang || 'fr'
   const url = `${OPENAGENDA_API}/agendas/${encodeURIComponent(agendaUid)}/events`
-  const events: any[] = []
+  const rows: Record<string, string>[] = []
   let after: any[] | undefined
   let total = 0
 
+  await log.task('Événements récupérés')
   while (true) {
     if (isStopped()) break
-    const params: Record<string, any> = { size: EVENTS_PAGE_SIZE }
+    // without `detailed`, the API only returns a subset of the fields (no timings details among others)
+    const params: Record<string, any> = { size: EVENTS_PAGE_SIZE, detailed: 1 }
     if (relative?.length) params.relative = relative
     if (after) params.after = after
 
-    const res = await oaRetry(() => axios.get(url, { params, headers: { key: apiKey } }), log)
+    const res = await axios.get(url, { params, headers: { key: apiKey }, timeout: OPENAGENDA_TIMEOUT })
     const page = res.data?.events
     if (!Array.isArray(page)) throw new Error("réponse inattendue de l'API OpenAgenda (clé events absente)")
     total = res.data.total ?? total
-    events.push(...page)
-    await log.progress('Événements récupérés', events.length, Math.max(total, events.length))
+    for (const event of page) rows.push(flattenEvent(event, lang, agendaUid))
+    await log.progress('Événements récupérés', rows.length, Math.max(total, rows.length))
 
     const next = res.data.after
     if (!page.length || !next || JSON.stringify(next) === JSON.stringify(after)) break
     after = next
   }
 
-  return events
+  return rows
 }
 
 export const runImport = async (context: ProcessingContext<ProcessingConfig>) => {
@@ -51,24 +55,22 @@ export const runImport = async (context: ProcessingContext<ProcessingConfig>) =>
   const { datasetMode } = processingConfig
   const agendaUid = processingConfig.agendaUid
   if (!agendaUid) throw new Error("Identifiant de l'agenda manquant, enregistrez la configuration avant d'exécuter le traitement.")
-  const lang = processingConfig.lang || 'fr'
   const apiKey = secrets?.apiKey
   if (!apiKey) throw new Error("Clé API OpenAgenda manquante, enregistrez la configuration avant d'exécuter le traitement.")
 
   await log.step(`Récupération des événements de l'agenda ${agendaUid}`)
-  const events = await fetchEvents(context, apiKey)
+  const rows = await fetchEvents(context, apiKey)
 
   if (isStopped()) {
-    await log.warning(`Traitement interrompu — ${events.length} événements récupérés, aucun import effectué`)
+    await log.warning(`Traitement interrompu — ${rows.length} événements récupérés, aucun import effectué`)
     return
   }
-  if (!events.length) {
+  if (!rows.length) {
     await log.warning('Aucun événement ne correspond aux filtres, le jeu de données est laissé inchangé')
     return
   }
 
   await log.step('Conversion des événements en jeu de données')
-  const rows = events.map(event => flattenEvent(event, lang, agendaUid))
   const csvPath = path.join(tmpDir, 'events.csv')
   await writeFile(csvPath, toCsv(IMPORT_COLUMNS, rows), 'utf8')
   await log.info(`${rows.length} événements convertis (${IMPORT_COLUMNS.length} colonnes)`)
@@ -76,8 +78,9 @@ export const runImport = async (context: ProcessingContext<ProcessingConfig>) =>
   await log.step('Chargement vers le jeu de données')
   const dataset = await dfRetry(async () => {
     const formData = new FormData()
-    if (datasetMode === 'update' && processingConfig.dataset?.title) formData.append('title', processingConfig.dataset.title)
+    // the title is only set at creation: on update it belongs to the dataset, and may have been renamed
     if (datasetMode === 'create' && processingConfig.datasetTitle) formData.append('title', processingConfig.datasetTitle)
+    formData.append('schema', JSON.stringify(IMPORT_SCHEMA))
     formData.append('file', createReadStream(csvPath), { filename: 'events.csv' })
     const contentLength = await getContentLength(formData)
     return axios({
